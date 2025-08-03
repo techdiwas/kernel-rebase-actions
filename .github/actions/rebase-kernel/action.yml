@@ -1,0 +1,24 @@
+name: 'Rebase Kernel'
+description: 'Clones and rebases a kernel from a source repository'
+
+inputs:
+  source_repo_url:
+    description: 'URL of the source kernel repository'
+    required: true
+  source_branch:
+    description: 'Branch to clone from the source repository'
+    required: true
+  rebase_branch:
+    description: 'The branch to rebase onto'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run Rebase Script
+      shell: bash
+      run: |
+        bash ${{ github.workspace }}/.github/scripts/kernel_rebase.sh \
+          "${{ inputs.source_repo_url }}" \
+          "${{ inputs.source_branch }}" \
+          "${{ inputs.rebase_branch }}"

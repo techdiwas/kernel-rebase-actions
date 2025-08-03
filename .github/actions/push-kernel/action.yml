@@ -1,0 +1,24 @@
+name: 'Push Kernel'
+description: 'Pushes the rebased kernel to a target repository'
+
+inputs:
+  target_org:
+    description: 'Target GitHub organization or user'
+    required: true
+  target_repo:
+    description: 'Target repository name'
+    required: true
+  target_branch:
+    description: 'Branch to push to'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Push Kernel Source
+      shell: bash
+      working-directory: ./kernel # Assumes the rebase script creates this directory
+      run: |
+        git checkout -b "${{ inputs.target_branch }}"
+        git remote add target "https://x-access-token:${{ env.GH_PAT }}@github.com/${{ inputs.target_org }}/${{ inputs.target_repo }}.git"
+        git push -u target "${{ inputs.target_branch }}" --force

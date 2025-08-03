@@ -1,0 +1,67 @@
+name: Kernel Rebase
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_org:
+        description: "Target GitHub Organization or User"
+        required: true
+        type: string
+      target_repo:
+        description: "Target Repository Name"
+        required: true
+        type: string
+      target_branch:
+        description: "Branch to push the kernel source to"
+        required: true
+        type: string
+      source_repo_url:
+        description: "The git URL of the kernel source to rebase from"
+        required: true
+        default: "https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git"
+        type: string
+      source_branch:
+        description: "The branch of the kernel source to rebase from"
+        required: true
+        default: "dandelion-q-oss"
+        type: string
+      rebase_branch:
+        description: "The branch within the source repo to rebase onto"
+        required: true
+        default: "deprecated/android-4.9-q"
+        type: string
+
+jobs:
+  kernel-rebase:
+    runs-on: ubuntu-latest
+
+    # Define environment variables for all steps in this job
+    env:
+      GH_PAT: ${{ secrets.GH_PAT }}
+      USER_EMAIL: ${{ secrets.USER_EMAIL }}
+      USERNAME: ${{ secrets.USERNAME }}
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@v4
+
+      - name: Setup SSH and GPG Keys
+        uses: ./actions/setup-keys
+        with:
+          ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg_passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Perform Kernel Rebase
+        uses: ./actions/rebase-kernel
+        with:
+          source_repo_url: ${{ inputs.source_repo_url }}
+          source_branch: ${{ inputs.source_branch }}
+          rebase_branch: ${{ inputs.rebase_branch }}
+
+      - name: Push to Target Repository
+        uses: ./actions/push-kernel
+        with:
+          target_org: ${{ inputs.target_org }}
+          target_repo: ${{ inputs.target_repo }}
+          target_branch: ${{ inputs.target_branch }}
