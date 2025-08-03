@@ -58,10 +58,8 @@ clone_repo_ack() {
 clone_commit_msg() {
     local dest_dir="${1}"
     cd "${dest_dir}"
-    curl -Lo .git/hooks/commit-msg http://review.googlesource.com/tools/hooks/commit-msg
+    curl -Lo .git/hooks/commit-msg https://android-review.googlesource.com/tools/hooks/commit-msg
     chmod +x .git/hooks/commit-msg
-    # Fix the shebang to use bash instead of sh to avoid dash incompatibility
-    sed -i '1s|^#!.*/sh$|#!/usr/bin/env bash|' .git/hooks/commit-msg
     cd -
 }
 
