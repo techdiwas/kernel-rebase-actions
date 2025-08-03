@@ -60,6 +60,8 @@ clone_commit_msg() {
     cd "${dest_dir}"
     curl -Lo .git/hooks/commit-msg http://review.googlesource.com/tools/hooks/commit-msg
     chmod +x .git/hooks/commit-msg
+    # Fix the shebang to use bash instead of sh to avoid dash incompatibility
+    sed -i '1s|^#!.*/sh$|#!/usr/bin/env bash|' .git/hooks/commit-msg
     cd -
 }
 
