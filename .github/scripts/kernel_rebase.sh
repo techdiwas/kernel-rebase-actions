@@ -55,7 +55,7 @@ clone_repo_ack() {
     git clone --single-branch --branch "${branch}" "${repo_url}" "${dest_dir}"
 }
 
-clone_commig_msg() {
+clone_commit_msg() {
     local dest_dir="${1}"
     cd "${dest_dir}"
     curl -Lo .git/hooks/commit-msg http://review.googlesource.com/tools/hooks/commit-msg
