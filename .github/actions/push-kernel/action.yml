@@ -17,7 +17,7 @@ runs:
   steps:
     - name: Push Kernel Source
       shell: bash
-      working-directory: ./kernel # Assumes the rebase script creates this directory
+      working-directory: .github/scripts/kernel # Assumes the rebase script creates this directory
       run: |
         git checkout -b "${{ inputs.target_branch }}"
         git remote add target "https://x-access-token:${{ env.GH_PAT }}@github.com/${{ inputs.target_org }}/${{ inputs.target_repo }}.git"
