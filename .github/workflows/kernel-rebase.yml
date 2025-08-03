@@ -46,21 +46,21 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup SSH and GPG Keys
-        uses: ./actions/setup-keys
+        uses: ./.github/actions/setup-keys
         with:
           ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           gpg_passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Perform Kernel Rebase
-        uses: ./actions/rebase-kernel
+        uses: ./.github/actions/rebase-kernel
         with:
           source_repo_url: ${{ inputs.source_repo_url }}
           source_branch: ${{ inputs.source_branch }}
           rebase_branch: ${{ inputs.rebase_branch }}
 
       - name: Push to Target Repository
-        uses: ./actions/push-kernel
+        uses: ./.github/actions/push-kernel
         with:
           target_org: ${{ inputs.target_org }}
           target_repo: ${{ inputs.target_repo }}
