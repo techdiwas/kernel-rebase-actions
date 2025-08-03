@@ -59,7 +59,7 @@ clone_commit_msg() {
     local dest_dir="${1}"
     cd "${dest_dir}"
     curl -Lo .git/hooks/commit-msg http://review.googlesource.com/tools/hooks/commit-msg
-    chmod u+x .git/hooks/commit-msg
+    chmod +x .git/hooks/commit-msg
     cd -
 }
 
