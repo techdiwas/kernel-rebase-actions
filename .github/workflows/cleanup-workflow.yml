@@ -1,9 +1,9 @@
 name: Cleanup Old Workflow Runs
 
 on:
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
   schedule:
-    - cron: "0 0 * * 0"  # Weekly cleanup (Sunday midnight UTC)
+    - cron: "0 0 * * 0"  # Weekly on Sunday midnight UTC
 
 permissions:
   actions: write
@@ -27,7 +27,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           DELETE_WITHIN_DAYS: 30
-          KEEP_MINIMUM_RUNS: 1
+          KEEP_MINIMUM_RUNS: 0
         run: |
           python <<'EOF'
           #!/usr/bin/env python3
@@ -35,6 +35,8 @@ jobs:
           Author: Diwas Neupane
           Purpose: Delete recent GitHub Actions workflow runs while keeping a minimum number safe.
           Dependency-free: Uses urllib instead of requests. Includes pagination.
+          Only deletes runs that failed or were cancelled.
+          Supports KEEP_MINIMUM_RUNS=0 to delete all eligible runs.
           """
 
           import os
@@ -46,10 +48,14 @@ jobs:
           token = os.getenv("GITHUB_TOKEN")
           repo = os.getenv("GITHUB_REPOSITORY")
           delete_within_days = int(os.getenv("DELETE_WITHIN_DAYS", "30"))
-          keep_minimum = int(os.getenv("KEEP_MINIMUM_RUNS", "1"))
+          keep_minimum = int(os.getenv("KEEP_MINIMUM_RUNS", "0"))
 
           if not token or not repo:
               print("❌ Error: Required environment variables are not set.")
+              exit(1)
+
+          if keep_minimum < 0:
+              print(f"❌ Invalid KEEP_MINIMUM_RUNS: {keep_minimum}. Must be zero or positive.")
               exit(1)
 
           headers = {
@@ -103,11 +109,12 @@ jobs:
                   print(f"⚠️ Skipping run with invalid 'created_at': {run}")
                   continue
 
-              if created_at >= cutoff_date:
+              conclusion = run.get("conclusion")
+              if created_at >= cutoff_date and conclusion in ["failure", "cancelled"]:
                   recent_runs.append(run)
 
           if not recent_runs:
-              print("✅ No recent runs found within the time window to delete.")
+              print("✅ No failed/cancelled runs found within the time window to delete.")
               exit(0)
 
           recent_runs.sort(
@@ -115,13 +122,12 @@ jobs:
               reverse=True
           )
 
-          if len(recent_runs) <= keep_minimum:
-              print(f"ℹ️ Found {len(recent_runs)} run(s), not more than the minimum ({keep_minimum}). Nothing to delete.")
+          if keep_minimum > 0 and len(recent_runs) <= keep_minimum:
+              print(f"ℹ️ Found {len(recent_runs)} failed/cancelled run(s), not more than the minimum ({keep_minimum}). Nothing to delete.")
               exit(0)
 
-          # --- Delete runs ---
-          runs_to_delete = recent_runs[keep_minimum:]
-          print(f"🗑️ Found {len(runs_to_delete)} run(s) to delete.")
+          runs_to_delete = recent_runs if keep_minimum == 0 else recent_runs[keep_minimum:]
+          print(f"🗑️ Found {len(runs_to_delete)} failed/cancelled run(s) to delete.")
 
           for run in runs_to_delete:
               run_id = run.get("id")
@@ -131,7 +137,7 @@ jobs:
 
               delete_url = f"https://api.github.com/repos/{repo}/actions/runs/{run_id}"
               if github_delete(delete_url):
-                  print(f"✅ Deleted run ID: {run_id} (Created: {run['created_at']})")
+                  print(f"✅ Deleted run ID: {run_id} (Status: {run.get('conclusion')}, Created: {run['created_at']})")
 
           print("🎉 Cleanup complete.")
           EOF
