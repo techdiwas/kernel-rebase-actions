@@ -1,15 +1,12 @@
-name: Clean Up Old Workflow Runs
+name: Clean Up Recent Workflow Runs
 
 on:
-  # Run this workflow automatically every day at 02:00 UTC
   schedule:
     - cron: '0 2 * * *'
-  
-  # Allow running this workflow manually from the Actions tab
   workflow_dispatch:
 
 jobs:
-  cleanup-runs:
+  cleanup-recent-runs:
     runs-on: ubuntu-latest
     steps:
       - name: Set up Python
@@ -20,21 +17,25 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Run cleanup script
+      - name: Run cleanup script for RECENT runs
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          RETENTION_DAYS: 30
+          # Delete runs CREATED WITHIN this many days
+          DELETE_WITHIN_DAYS: 30
+          # Always keep at least this many of the most recent runs as a safeguard
+          KEEP_MINIMUM_RUNS: 1
         run: |
           python -c '
           import os
           import requests
-          from datetime import datetime, timedelta
+          from datetime import datetime, timedelta, UTC
 
-          # --- Configuration from Environment Variables ---
+          # --- Configuration ---
           token = os.getenv("GITHUB_TOKEN")
           repo = os.getenv("GITHUB_REPOSITORY")
-          retain_days = int(os.getenv("RETENTION_DAYS", "30"))
+          delete_within_days = int(os.getenv("DELETE_WITHIN_DAYS", "30"))
+          keep_minimum = int(os.getenv("KEEP_MINIMUM_RUNS", "1"))
 
           if not token or not repo:
               print("Error: GITHUB_TOKEN or GITHUB_REPOSITORY not set.")
@@ -46,8 +47,11 @@ jobs:
               "Accept": "application/vnd.github.v3+json"
           }
           
-          cutoff_date = datetime.utcnow() - timedelta(days=retain_days)
-          print(f"Retention policy: Deleting runs older than {retain_days} days (created before {cutoff_date.isoformat()}).")
+          # Calculate the date threshold. Runs created AFTER this date will be targeted.
+          cutoff_date = datetime.now(UTC) - timedelta(days=delete_within_days)
+          
+          print(f"Deletion Policy: Targeting runs created WITHIN the last {delete_within_days} days (after {cutoff_date.isoformat()}).")
+          print(f"Safety Policy: Always keeping the {keep_minimum} most recent run(s).")
 
           runs_url = f"https://api.github.com/repos/{repo}/actions/runs"
           params = {"per_page": 100}
@@ -57,23 +61,41 @@ jobs:
               print(f"Error fetching workflow runs: {response.status_code} - {response.text}")
               exit(1)
 
-          all_runs = response.json()["workflow_runs"]
-          runs_to_delete = []
+          all_runs = response.json().get("workflow_runs", [])
+          recent_runs_to_consider = []
 
+          # 1. Find all runs created WITHIN the time window
           for run in all_runs:
-              created_at = datetime.strptime(run["created_at"], "%Y-%m-%dT%H:%M:%SZ")
-              if run["status"] != "in_progress" and created_at < cutoff_date:
-                  runs_to_delete.append(run)
+              # Skip runs that are still running
+              if run["status"] == "in_progress":
+                  continue
+              
+              created_at = datetime.fromisoformat(run["created_at"])
+              # *** THIS IS THE KEY LOGIC CHANGE ***
+              # We now look for runs created AFTER the cutoff date (>=)
+              if created_at >= cutoff_date:
+                  recent_runs_to_consider.append(run)
 
-          if not runs_to_delete:
-              print("No old workflow runs to delete.")
+          if not recent_runs_to_consider:
+              print("No recent runs found within the time window to delete.")
               exit(0)
 
-          print(f"Found {len(runs_to_delete)} workflow run(s) to delete.")
+          # 2. Sort the recent runs from newest to oldest
+          recent_runs_to_consider.sort(key=lambda r: datetime.fromisoformat(r["created_at"]), reverse=True)
 
+          # 3. Apply the safety rule: remove the newest N runs from our deletion list
+          if len(recent_runs_to_consider) <= keep_minimum:
+              print(f"Found {len(recent_runs_to_consider)} recent run(s), which is not more than the minimum of {keep_minimum} to keep. Nothing to delete.")
+              exit(0)
+          
+          # The runs we will actually delete are all but the N newest ones
+          runs_to_delete = recent_runs_to_consider[keep_minimum:]
+
+          print(f"Found {len(runs_to_delete)} recent run(s) to delete.")
+
+          # 4. Delete the targeted runs
           for run in runs_to_delete:
               delete_url = f"https://api.github.com/repos/{repo}/actions/runs/{run['id']}"
-              
               del_response = requests.delete(delete_url, headers=headers)
               
               if del_response.status_code == 204:
