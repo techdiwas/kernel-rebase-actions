@@ -22,11 +22,8 @@ jobs:
 
       - name: Run cleanup script
         env:
-          # This token is provided by GitHub Actions. It has the necessary permissions.
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
-          # The repository is automatically identified from the workflow's context.
           GITHUB_REPOSITORY: ${{ github.repository }}
-          # Set the retention period in days.
           RETENTION_DAYS: 30
         run: |
           python -c '
@@ -49,13 +46,11 @@ jobs:
               "Accept": "application/vnd.github.v3+json"
           }
           
-          # 1. Calculate the cutoff date
           cutoff_date = datetime.utcnow() - timedelta(days=retain_days)
           print(f"Retention policy: Deleting runs older than {retain_days} days (created before {cutoff_date.isoformat()}).")
 
-          # 2. Get all workflow runs for the repository
           runs_url = f"https://api.github.com/repos/{repo}/actions/runs"
-          params = {"per_page": 100} # Get 100 runs per page
+          params = {"per_page": 100}
           
           response = requests.get(runs_url, headers=headers, params=params)
           if response.status_code != 200:
@@ -67,7 +62,6 @@ jobs:
 
           for run in all_runs:
               created_at = datetime.strptime(run["created_at"], "%Y-%m-%dT%H:%M:%SZ")
-              # Ignore in-progress runs and check the date
               if run["status"] != "in_progress" and created_at < cutoff_date:
                   runs_to_delete.append(run)
 
@@ -77,15 +71,15 @@ jobs:
 
           print(f"Found {len(runs_to_delete)} workflow run(s) to delete.")
 
-          # 3. Delete each old workflow run
           for run in runs_to_delete:
-              delete_url = f"https://api.github.com/repos/{repo}/actions/runs/{run[\"id\"]}"
+              delete_url = f"https://api.github.com/repos/{repo}/actions/runs/{run['id']}"
+              
               del_response = requests.delete(delete_url, headers=headers)
               
               if del_response.status_code == 204:
-                  print(f"Successfully deleted run ID: {run[\"id\"]} (Created: {run[\"created_at\"]})")
+                  print(f"Successfully deleted run ID: {run['id']} (Created: {run['created_at']})")
               else:
-                  print(f"Failed to delete run ID {run[\"id\"]}: {del_response.status_code} - {del_response.text}")
+                  print(f"Failed to delete run ID {run['id']}: {del_response.status_code} - {del_response.text}")
 
           print("Cleanup complete.")
           '
