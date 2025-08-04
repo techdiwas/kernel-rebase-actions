@@ -47,7 +47,6 @@ jobs:
               "Accept": "application/vnd.github.v3+json"
           }
           
-          # Calculate the date threshold. Runs created AFTER this date will be targeted.
           cutoff_date = datetime.now(UTC) - timedelta(days=delete_within_days)
           
           print(f"Deletion Policy: Targeting runs created WITHIN the last {delete_within_days} days (after {cutoff_date.isoformat()}).")
@@ -64,15 +63,11 @@ jobs:
           all_runs = response.json().get("workflow_runs", [])
           recent_runs_to_consider = []
 
-          # 1. Find all runs created WITHIN the time window
           for run in all_runs:
-              # Skip runs that are still running
               if run["status"] == "in_progress":
                   continue
               
               created_at = datetime.fromisoformat(run["created_at"])
-              # *** THIS IS THE KEY LOGIC CHANGE ***
-              # We now look for runs created AFTER the cutoff date (>=)
               if created_at >= cutoff_date:
                   recent_runs_to_consider.append(run)
 
@@ -80,22 +75,19 @@ jobs:
               print("No recent runs found within the time window to delete.")
               exit(0)
 
-          # 2. Sort the recent runs from newest to oldest
           recent_runs_to_consider.sort(key=lambda r: datetime.fromisoformat(r["created_at"]), reverse=True)
 
-          # 3. Apply the safety rule: remove the newest N runs from our deletion list
           if len(recent_runs_to_consider) <= keep_minimum:
               print(f"Found {len(recent_runs_to_consider)} recent run(s), which is not more than the minimum of {keep_minimum} to keep. Nothing to delete.")
               exit(0)
           
-          # The runs we will actually delete are all but the N newest ones
           runs_to_delete = recent_runs_to_consider[keep_minimum:]
 
           print(f"Found {len(runs_to_delete)} recent run(s) to delete.")
 
-          # 4. Delete the targeted runs
           for run in runs_to_delete:
               delete_url = f"https://api.github.com/repos/{repo}/actions/runs/{run['id']}"
+              
               del_response = requests.delete(delete_url, headers=headers)
               
               if del_response.status_code == 204:
