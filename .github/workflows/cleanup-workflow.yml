@@ -1,7 +1,7 @@
 name: Cleanup Old Workflow Runs
 
 on:
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:  # Manual trigger
   schedule:
     - cron: "0 0 * * 0"  # Weekly cleanup (Sunday midnight UTC)
 
@@ -30,14 +30,15 @@ jobs:
           """
           Author: Diwas Neupane
           Purpose: Delete recent GitHub Actions workflow runs while keeping a minimum number safe.
-          Supports pagination beyond 100 runs.
+          Dependency-free: Uses urllib instead of requests. Includes pagination.
           """
 
           import os
-          import requests
+          import json
           from datetime import datetime, timedelta, timezone
+          from urllib import request, error, parse
 
-          # --- Configuration ---
+          # --- Config ---
           token = os.getenv("GITHUB_TOKEN")
           repo = os.getenv("GITHUB_REPOSITORY")
           delete_within_days = int(os.getenv("DELETE_WITHIN_DAYS", "30"))
@@ -49,30 +50,39 @@ jobs:
 
           headers = {
               "Authorization": f"token {token}",
-              "Accept": "application/vnd.github.v3+json"
+              "Accept": "application/vnd.github.v3+json",
+              "User-Agent": "cleanup-script"
           }
 
           cutoff_date = datetime.now(timezone.utc) - timedelta(days=delete_within_days)
           print(f"🧹 Deletion Policy: Runs created WITHIN last {delete_within_days} days (after {cutoff_date.isoformat()}).")
           print(f"🛡️ Safety Policy: Keeping the {keep_minimum} most recent run(s).")
 
-          # --- Fetch all runs with pagination ---
+          def github_get(url, params=None):
+              if params:
+                  url += "?" + parse.urlencode(params)
+              req = request.Request(url, headers=headers)
+              with request.urlopen(req) as resp:
+                  return json.loads(resp.read().decode())
+
+          def github_delete(url):
+              req = request.Request(url, headers=headers, method="DELETE")
+              try:
+                  with request.urlopen(req) as resp:
+                      return resp.status == 204
+              except error.HTTPError as e:
+                  print(f"❌ Failed to delete: {e}")
+                  return False
+
+          # --- Fetch all runs ---
           all_runs = []
           page = 1
           while True:
               runs_url = f"https://api.github.com/repos/{repo}/actions/runs"
-              params = {"per_page": 100, "page": page}
-              try:
-                  response = requests.get(runs_url, headers=headers, params=params)
-                  response.raise_for_status()
-              except requests.exceptions.RequestException as e:
-                  print(f"❌ Error fetching workflow runs (page {page}): {e}")
-                  break
-
-              runs = response.json().get("workflow_runs", [])
+              data = github_get(runs_url, {"per_page": 100, "page": page})
+              runs = data.get("workflow_runs", [])
               if not runs:
                   break
-
               all_runs.extend(runs)
               page += 1
 
@@ -83,7 +93,6 @@ jobs:
           for run in all_runs:
               if run.get("status") == "in_progress":
                   continue
-
               try:
                   created_at = datetime.strptime(run["created_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
               except (KeyError, ValueError):
@@ -117,13 +126,8 @@ jobs:
                   continue
 
               delete_url = f"https://api.github.com/repos/{repo}/actions/runs/{run_id}"
-
-              try:
-                  del_response = requests.delete(delete_url, headers=headers)
-                  del_response.raise_for_status()
+              if github_delete(delete_url):
                   print(f"✅ Deleted run ID: {run_id} (Created: {run['created_at']})")
-              except requests.exceptions.RequestException as e:
-                  print(f"❌ Failed to delete run ID {run_id}: {e}")
 
           print("🎉 Cleanup complete.")
           EOF
