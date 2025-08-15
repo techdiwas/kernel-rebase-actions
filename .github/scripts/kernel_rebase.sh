@@ -57,10 +57,10 @@ clone_repo_ack() {
 
 clone_commit_msg() {
     local dest_dir="${1}"
-    cd "${dest_dir}"
+    pushd "${dest_dir}" > /dev/null
     curl -Lo .git/hooks/commit-msg https://android-review.googlesource.com/tools/hooks/commit-msg
     chmod +x .git/hooks/commit-msg
-    cd -
+    popd > /dev/null
 }
 
 get_kernel_version() {
@@ -75,16 +75,17 @@ reset_ack_to_oem_version() {
 
     printf "Searching for ACK merge commit for kernel version '%s'...\n" "${oem_version}"
 
-    local commit_sha
-    commit_sha=$(git -C "${ack_dir}" log --oneline "${ack_branch}" Makefile | grep -i "${oem_version}" | grep -i "merge" | cut -d ' ' -f1)
+    local -a commit_shas
+    mapfile -t commit_shas < <(git -C "${ack_dir}" log --oneline "${ack_branch}" Makefile | grep -i "${oem_version}" | grep -i "merge" | cut -d ' ' -f1)
 
-    if [ -z "${commit_sha}" ]; then
+    if [ "${#commit_shas[@]}" -eq 0 ]; then
         abort "Could not find a corresponding merge commit for version '${oem_version}' in the ACK '${ack_branch}' branch."
     fi
-    if [ "$(echo "${commit_sha}" | wc -l)" -ne 1 ]; then
+    if [ "${#commit_shas[@]}" -gt 1 ]; then
         abort "Found multiple possible merge commits for version '${oem_version}'. Aborting for safety."
     fi
 
+    local commit_sha="${commit_shas[0]}"
     printf "Found base commit: %s. Resetting ACK repository...\n" "${commit_sha}"
     git -C "${ack_dir}" reset --hard "${commit_sha}"
 }
@@ -95,15 +96,15 @@ rebase_oem_on_ack() {
 
     printf "Replacing ACK directories with OEM source...\n"
 
-    # Get list of top-level directories/files (excluding .git)
-    local oem_items
-    oem_items=$(cd "${oem_dir}" && find . -mindepth 1 -maxdepth 1 ! -name ".git" -printf "%P\n")
+    # Get list of top-level directories/files into an array
+    local -a oem_items
+    mapfile -t oem_items < <(cd "${oem_dir}" && find . -mindepth 1 -maxdepth 1 ! -name ".git" -printf "%P\n")
 
     printf "Copying all OEM files to ACK directory...\n"
     rsync -a --exclude='.git/' "${oem_dir}/" "${ack_dir}/"
 
     printf "Creating separate commits for each top-level OEM directory/file...\n"
-    for item in ${oem_items}; do
+    for item in "${oem_items[@]}"; do
         git -C "${ack_dir}" add "${item}"
         if ! git -C "${ack_dir}" diff --cached --quiet; then
             git -C "${ack_dir}" commit -S --quiet -s -m "${item}: Import from OEM source"
