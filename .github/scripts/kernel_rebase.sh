@@ -95,26 +95,45 @@ rebase_oem_on_ack() {
     local ack_dir="${2}"
 
     printf "Replacing ACK directories with OEM source...\n"
-
-    # Get list of top-level directories/files into an array
-    local -a oem_items
-    mapfile -t oem_items < <(cd "${oem_dir}" && find . -mindepth 1 -maxdepth 1 ! -name ".git" -printf "%P\n")
-
-    printf "Copying all OEM files to ACK directory...\n"
     rsync -a --exclude='.git/' "${oem_dir}/" "${ack_dir}/"
 
-    printf "Creating separate commits for each top-level OEM directory/file...\n"
-    for item in "${oem_items[@]}"; do
-        git -C "${ack_dir}" add "${item}"
+    printf "Creating a commit for root-level files...\n"
+    # Add all files in the root of the ack_dir
+    # 'find' gets the files, which are then passed to 'git add'
+    find "${ack_dir}" -maxdepth 1 -type f -exec git -C "${ack_dir}" add {} +
+
+    # Check if there are any staged changes to commit
+    if ! git -C "${ack_dir}" diff --cached --quiet; then
+        git -C "${ack_dir}" commit -S --quiet -s \
+            -m "treewide: Import root-level files from OEM kernel source" \
+            -m "Kernel: Xiaomi kernel changes for Redmi 9C, Redmi POCO C3 and Redmi 9A Android Q" \
+            -m "* Import from branch dandelion-q-oss of repository (https://github.com/MiCode/Xiaomi_Kernel_OpenSource)."
+    fi
+
+    printf "Creating separate commits for each top-level OEM directory...\n"
+    # Get a list of top-level directories into an array
+    local -a oem_dirs
+    mapfile -t oem_dirs < <(find "${oem_dir}" -mindepth 1 -maxdepth 1 -type d ! -name ".git" -printf "%P\n")
+
+    for dir in "${oem_dirs[@]}"; do
+        git -C "${ack_dir}" add "${dir}"
         if ! git -C "${ack_dir}" diff --cached --quiet; then
-            git -C "${ack_dir}" commit -S --quiet -s -m "${item}: Import from OEM source"
+            git -C "${ack_dir}" commit -S --quiet -s \
+                -m "${dir}: Import top-level directory from OEM kernel source" \
+                -m "Kernel: Xiaomi kernel changes for Redmi 9C, Redmi POCO C3 and Redmi 9A Android Q" \
+                -m "* Import from branch dandelion-q-oss of repository (https://github.com/MiCode/Xiaomi_Kernel_OpenSource)."
         fi
     done
 
-    # Final commit for any remaining changes
-    git -C "${ack_dir}" add .
-    if ! git -C "${ack_dir}" diff-index --quiet HEAD; then
-        git -C "${ack_dir}" commit -S --quiet -s -m "Import remaining OEM changes"
+    # Check for any remaining untracked or modified files and commit them.
+    # 'git status --porcelain' will output something if there are changes.
+    if [[ -n "$(git -C "${ack_dir}" status --porcelain)" ]]; then
+        printf "Committing remaining OEM changes...\n"
+        git -C "${ack_dir}" add .
+        git -C "${ack_dir}" commit -S --quiet -s \
+            -m "Import remaining OEM changes" \
+            -m "Kernel: Xiaomi kernel changes for Redmi 9C, Redmi POCO C3 and Redmi 9A Android Q" \
+            -m "* Import from branch dandelion-q-oss of repository (https://github.com/MiCode/Xiaomi_Kernel_OpenSource)."
     fi
 }
 
