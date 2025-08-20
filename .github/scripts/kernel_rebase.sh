@@ -107,7 +107,8 @@ rebase_oem_on_ack() {
                 -m "${prefix}: Import from OEM kernel source" \
                 -m "Kernel: Xiaomi kernel changes for Redmi 9C, Redmi POCO C3 and Redmi 9A Android Q" \
                 -m "The kernel config file used is angelica_defconfig, angelicain_defconfig and dandelion_defconfig." \
-                -m "The original kernel source can be found at [MiCode](https://github.com/MiCode/Xiaomi_Kernel_OpenSource)."
+                -m "The original kernel source branch is dandelion-q-oss which can be found here:
+                    https://github.com/MiCode/Xiaomi_Kernel_OpenSource"
         fi
     }
 
