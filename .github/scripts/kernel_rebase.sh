@@ -91,49 +91,48 @@ reset_ack_to_oem_version() {
 }
 
 rebase_oem_on_ack() {
-    local oem_dir="$1"
-    local ack_dir="$2"
+	local oem_dir="$1"
+	local ack_dir="$2"
 
-    echo "Syncing OEM source into ACK..."
-    # Copy OEM kernel source into ACK, skipping .git metadata
-    rsync -a --exclude='.git/' "${oem_dir}/" "${ack_dir}/"
+	echo "Syncing OEM source into ACK..."
+	# Copy OEM kernel source into ACK, skipping .git metadata
+	rsync -a --exclude='.git/' "${oem_dir}/" "${ack_dir}/"
 
-    # Helper function:
-    # Stages and commits files (if staged changes exist) with a standard commit message.
-    commit_if_changes() {
-        local prefix="$1"
-        if ! git -C "${ack_dir}" diff --cached --quiet; then
-        	git -C "${ack_dir}" commit -S --quiet -s -F- <<-EOF
-	        ${prefix}: Import from OEM kernel source
-        
-        	Kernel: Xiaomi kernel changes for Redmi 9C, Redmi POCO C3 and Redmi 9A Android Q
-        
-        	The kernel config file used is angelica_defconfig, angelicain_defconfig and dandelion_defconfig.
-        
-	        The original kernel source branch is dandelion-q-oss which can be found here:
-        	https://github.com/MiCode/Xiaomi_Kernel_OpenSource
-	        EOF
-        fi
-    }
+	# Helper function: stages and commits changes if they exist
+	commit_if_changes() {
+		local prefix="$1"
+		if ! git -C "${ack_dir}" diff --cached --quiet; then
+			git -C "${ack_dir}" commit -S --quiet -s -F- <<-EOF
+${prefix}: Import from OEM kernel source
 
-    echo "Committing root-level files..."
-    # Stage only root-level files (no directories) and commit them
-    find "${ack_dir}" -maxdepth 1 -type f -exec git -C "${ack_dir}" add {} +
-    commit_if_changes "treewide"
+Kernel: Xiaomi kernel changes for Redmi 9C, Redmi POCO C3 and Redmi 9A Android Q
 
-    echo "Committing each top-level OEM directory..."
-    # For each top-level OEM directory, stage it and commit separately
-    while IFS= read -r dir; do
-        git -C "${ack_dir}" add "$dir"
-        commit_if_changes "$dir"
-    done < <(find "${oem_dir}" -mindepth 1 -maxdepth 1 -type d ! -name ".git" -printf "%P\n")
+The kernel config file used is angelica_defconfig, angelicain_defconfig and dandelion_defconfig.
 
-    echo "Checking for remaining changes..."
-    # If there are any leftovers (untracked/modified files), stage and commit them
-    if [[ -n "$(git -C "${ack_dir}" status --porcelain)" ]]; then
-        git -C "${ack_dir}" add .
-        commit_if_changes "misc"
-    fi
+The original kernel source branch is dandelion-q-oss which can be found here:
+https://github.com/MiCode/Xiaomi_Kernel_OpenSource
+EOF
+		fi
+	}
+
+	echo "Committing root-level files..."
+	# Stage only root-level files (no directories) and commit them
+	find "${ack_dir}" -maxdepth 1 -type f -exec git -C "${ack_dir}" add {} +
+	commit_if_changes "treewide"
+
+	echo "Committing each top-level OEM directory..."
+	# For each top-level OEM directory, stage it and commit separately
+	while IFS= read -r dir; do
+		git -C "${ack_dir}" add "$dir"
+		commit_if_changes "$dir"
+	done < <(find "${oem_dir}" -mindepth 1 -maxdepth 1 -type d ! -name ".git" -printf "%P\n")
+
+	echo "Checking for remaining changes..."
+	# If there are any leftovers (untracked/modified files), stage and commit them
+	if [[ -n "$(git -C "${ack_dir}" status --porcelain)" ]]; then
+		git -C "${ack_dir}" add .
+		commit_if_changes "misc"
+	fi
 }
 
 main() {
