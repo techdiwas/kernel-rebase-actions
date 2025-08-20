@@ -91,49 +91,42 @@ reset_ack_to_oem_version() {
 }
 
 rebase_oem_on_ack() {
-    local oem_dir="${1}"
-    local ack_dir="${2}"
+    local oem_dir="$1"
+    local ack_dir="$2"
 
-    printf "Replacing ACK directories with OEM source...\n"
+    echo "Syncing OEM source into ACK..."
+    # Copy OEM kernel source into ACK, skipping .git metadata
     rsync -a --exclude='.git/' "${oem_dir}/" "${ack_dir}/"
 
-    printf "Creating a commit for root-level files...\n"
-    # Add all files in the root of the ack_dir
-    # 'find' gets the files, which are then passed to 'git add'
-    find "${ack_dir}" -maxdepth 1 -type f -exec git -C "${ack_dir}" add {} +
-
-    # Check if there are any staged changes to commit
-    if ! git -C "${ack_dir}" diff --cached --quiet; then
-        git -C "${ack_dir}" commit -S --quiet -s \
-            -m "treewide: Import root-level files from OEM kernel source" \
-            -m "Kernel: Xiaomi kernel changes for Redmi 9C, Redmi POCO C3 and Redmi 9A Android Q" \
-            -m "* Import from branch dandelion-q-oss of repository (https://github.com/MiCode/Xiaomi_Kernel_OpenSource)."
-    fi
-
-    printf "Creating separate commits for each top-level OEM directory...\n"
-    # Get a list of top-level directories into an array
-    local -a oem_dirs
-    mapfile -t oem_dirs < <(find "${oem_dir}" -mindepth 1 -maxdepth 1 -type d ! -name ".git" -printf "%P\n")
-
-    for dir in "${oem_dirs[@]}"; do
-        git -C "${ack_dir}" add "${dir}"
+    # Helper function:
+    # Stages and commits files (if staged changes exist) with a standard commit message.
+    commit_if_changes() {
+        local prefix="$1"
         if ! git -C "${ack_dir}" diff --cached --quiet; then
             git -C "${ack_dir}" commit -S --quiet -s \
-                -m "${dir}: Import top-level directory from OEM kernel source" \
+                -m "${prefix}: Import from OEM kernel source" \
                 -m "Kernel: Xiaomi kernel changes for Redmi 9C, Redmi POCO C3 and Redmi 9A Android Q" \
-                -m "* Import from branch dandelion-q-oss of repository (https://github.com/MiCode/Xiaomi_Kernel_OpenSource)."
+                -m "* Imported from branch dandelion-q-oss of repository https://github.com/MiCode/Xiaomi_Kernel_OpenSource"
         fi
-    done
+    }
 
-    # Check for any remaining untracked or modified files and commit them.
-    # 'git status --porcelain' will output something if there are changes.
+    echo "Committing root-level files..."
+    # Stage only root-level files (no directories) and commit them
+    find "${ack_dir}" -maxdepth 1 -type f -exec git -C "${ack_dir}" add {} +
+    commit_if_changes "treewide"
+
+    echo "Committing each top-level OEM directory..."
+    # For each top-level OEM directory, stage it and commit separately
+    while IFS= read -r dir; do
+        git -C "${ack_dir}" add "$dir"
+        commit_if_changes "$dir"
+    done < <(find "${oem_dir}" -mindepth 1 -maxdepth 1 -type d ! -name ".git" -printf "%P\n")
+
+    echo "Checking for remaining changes..."
+    # If there are any leftovers (untracked/modified files), stage and commit them
     if [[ -n "$(git -C "${ack_dir}" status --porcelain)" ]]; then
-        printf "Committing remaining OEM changes...\n"
         git -C "${ack_dir}" add .
-        git -C "${ack_dir}" commit -S --quiet -s \
-            -m "Import remaining OEM changes" \
-            -m "Kernel: Xiaomi kernel changes for Redmi 9C, Redmi POCO C3 and Redmi 9A Android Q" \
-            -m "* Import from branch dandelion-q-oss of repository (https://github.com/MiCode/Xiaomi_Kernel_OpenSource)."
+        commit_if_changes "misc"
     fi
 }
 
