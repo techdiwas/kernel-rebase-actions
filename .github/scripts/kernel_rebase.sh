@@ -106,6 +106,7 @@ rebase_oem_on_ack() {
             git -C "${ack_dir}" commit -S --quiet -s \
                 -m "${prefix}: Import from OEM kernel source" \
                 -m "Kernel: Xiaomi kernel changes for Redmi 9C, Redmi POCO C3 and Redmi 9A Android Q" \
+                -m "The kernel config file used is angelica_defconfig, angelicain_defconfig and dandelion_defconfig." \
                 -m "* Imported from branch dandelion-q-oss of repository https://github.com/MiCode/Xiaomi_Kernel_OpenSource"
         fi
     }
